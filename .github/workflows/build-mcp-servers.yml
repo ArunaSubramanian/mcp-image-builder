@@ -32,11 +32,17 @@ jobs:
   build-scan-sign:
     runs-on: ubuntu-latest
     steps:
+      # Step 1: checkout YOUR repo (sets git context for upload-sarif)
+      - name: Checkout own repo
+        uses: actions/checkout@v6
+
+      # Step 2: checkout THEIR repo into a subfolder
       - name: Checkout upstream repo
         uses: actions/checkout@v6
         with:
           repository: ${{ inputs.upstream_repo }}
           ref: ${{ inputs.upstream_ref }}
+          path: upstream
 
       - name: Lowercase owner
         id: lower
@@ -61,12 +67,13 @@ jobs:
             type=raw,value=${{ inputs.upstream_ref }}
             type=raw,value=latest
 
+      # Step 3: build from the upstream/ subfolder
       - name: Build and push image
         id: build-and-push
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ${{ inputs.dockerfile_path }}
+          context: ./upstream
+          file: ./upstream/${{ inputs.dockerfile_path }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -78,6 +85,7 @@ jobs:
           format: "sarif"
           output: "trivy-results.sarif"
 
+      # This now works because git context is YOUR repo's commit
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
         with:

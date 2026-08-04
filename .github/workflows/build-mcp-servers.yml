@@ -81,7 +81,7 @@ jobs:
           category: "${{ inputs.image_name }}"
 
       - name: Trivy gate (fail on HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.31.0
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}
           format: "table"

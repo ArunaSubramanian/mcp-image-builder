@@ -1,0 +1,98 @@
+name: Build MCP Server Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_repo:
+        description: "Upstream repo (e.g., obot-platform/slack-mcp)"
+        required: true
+        type: string
+      upstream_ref:
+        description: "Git ref to build (tag, branch, or commit SHA)"
+        required: true
+        default: "main"
+        type: string
+      image_name:
+        description: "Image name (e.g., slack-mcp)"
+        required: true
+        type: string
+      dockerfile_path:
+        description: "Path to Dockerfile in the upstream repo"
+        required: false
+        default: "Dockerfile"
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+  security-events: write
+
+jobs:
+  build-scan-sign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout upstream repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.upstream_repo }}
+          ref: ${{ inputs.upstream_ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}
+          tags: |
+            type=raw,value=${{ inputs.upstream_ref }}
+            type=raw,value=latest
+
+      - name: Build and push image
+        id: build-and-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ inputs.dockerfile_path }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Run Trivy scan (SARIF)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: "${{ inputs.image_name }}"
+
+      - name: Trivy gate (fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}
+          format: "table"
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with cosign (keyless)
+        env:
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}@${DIGEST}

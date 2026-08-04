@@ -38,6 +38,10 @@ jobs:
           repository: ${{ inputs.upstream_repo }}
           ref: ${{ inputs.upstream_ref }}
 
+      - name: Lowercase owner
+        id: lower
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -52,7 +56,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}
+          images: ghcr.io/${{ steps.lower.outputs.owner }}/mcp-servers/${{ inputs.image_name }}
           tags: |
             type=raw,value=${{ inputs.upstream_ref }}
             type=raw,value=latest
@@ -70,7 +74,7 @@ jobs:
       - name: Run Trivy scan (SARIF)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}
+          image-ref: ghcr.io/${{ steps.lower.outputs.owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}
           format: "sarif"
           output: "trivy-results.sarif"
 
@@ -82,7 +86,14 @@ jobs:
       - name: Enforce vulnerability policy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}
+          image-ref: ghcr.io/${{ steps.lower.outputs.owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}
           format: "table"
           severity: "HIGH,CRITICAL"
           exit-code: "1"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with cosign (keyless)
+        run: |
+          cosign sign --yes ghcr.io/${{ steps.lower.outputs.owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}

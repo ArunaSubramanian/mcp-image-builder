@@ -68,33 +68,21 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Run Trivy scan (SARIF)
-        uses: aquasecurity/trivy-action@v0.31.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}
           format: "sarif"
           output: "trivy-results.sarif"
-          version: "v0.62.3"
 
-
-      - name: Upload SARIF to GitHub Security tab
+      - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
-          category: "${{ inputs.image_name }}"
 
-      - name: Trivy gate (fail on HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@v0.31.0
+      - name: Enforce vulnerability policy
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}
           format: "table"
           severity: "HIGH,CRITICAL"
           exit-code: "1"
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3
-
-      - name: Sign image with cosign (keyless)
-        env:
-          DIGEST: ${{ steps.build-and-push.outputs.digest }}
-        run: |
-          cosign sign --yes ghcr.io/${{ github.repository_owner }}/mcp-servers/${{ inputs.image_name }}@${DIGEST}

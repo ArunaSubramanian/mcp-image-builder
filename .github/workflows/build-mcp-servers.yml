@@ -105,3 +105,24 @@ jobs:
       - name: Sign image with cosign (keyless)
         run: |
           cosign sign --yes ghcr.io/${{ steps.lower.outputs.owner }}/mcp-servers/${{ inputs.image_name }}@${{ steps.build-and-push.outputs.digest }}
+
+      - name: Generate SBOM
+        if: ${{ github.ref_type == 'tag' }}
+        run: |
+          cosign download sbom ${{ secrets.OCIR_REGISTRY }}/${{ secrets.OCIR_REPO }}@${{ steps.build-and-push.outputs.digest }} > sbom.json || true
+          echo "Image: ${{ secrets.OCIR_REGISTRY }}/${{ secrets.OCIR_REPO }}@${{ steps.build-and-push.outputs.digest }}" > release-notes.txt
+          echo "Digest: ${{ steps.build-and-push.outputs.digest }}" >> release-notes.txt
+
+      - name: Upload to GitHub Releases
+        if: ${{ github.ref_type == 'tag' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            trivy-results.sarif
+            sbom.json
+            release-notes.txt
+          body_path: release-notes.txt
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
